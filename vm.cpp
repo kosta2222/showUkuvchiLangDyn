@@ -11,8 +11,8 @@ extern "C"
   /**
    * Работаем с данными элементами из ObjectHeap.cpp
    */
-  extern Variable* m_objectMap[];
-  extern struct map * vTable;
+  extern Variable* m_objectMap[]; ///< куча
+  extern struct map * vTable; ///< карта методов
 
   /** вызвать пользовательскую функцию
    \param [in] argc количество аргументов
@@ -64,18 +64,18 @@ extern "C"
 
   static VM_INSTRUCTION vm_instructions[] = {
     { "noop", 0},
-    { "iadd", 0},
-    { "isub", 0},
-    { "imul", 0},
-    {"idiv", 0},
+    { "fadd", 0},
+    { "fsub", 0},
+    { "fmul", 0},
+    {"fdiv", 0},
     {"irem", 0},
-    {"ipow", 0},
+    {"fpow", 0},
     { "ilt", 0},
     { "ieq", 0},
     { "br", 1},
     { "brt", 1},
     { "brf", 1},
-    { "iconst", 1},
+    { "fconst", 1},
     { "load", 1},
     { "gload", 1},
     { "store", 1},
@@ -97,18 +97,16 @@ extern "C"
     {"invoke", 0},
     { "stop", 0}
   };
-  /**Инициализация контекста */
-  static void vm_context_init (Context *ctx, u4 ip, u1 nlocals);
 
-  /** инициализируем виртуальную машину */
+  /**
+   * инициализируем виртуальную машину
+   * \param vm компонент ВМ
+   * \param nglobals количество глобальных переменных
+   */
   void
-  vm_init (VM *vm, char* entryFuncName, u1 nglobals)
+  vm_init (VM *vm, u1 nglobals)
   {
-    u1 * code = (u1*) mapGet (entryFuncName, vTable);
 
-    u4 code_size = sizeof (code);
-    vm->code = code;
-    vm->code_size = code_size;
     vm->globals = (Variable*) calloc (nglobals, sizeof (Variable));
     vm->nglobals = nglobals;
   }
@@ -121,38 +119,44 @@ extern "C"
     free (vm);
   }
 
-  /** создать виртуальную машину */
+  /**
+   * создать виртуальную машину
+   * \param nglobals количество глобальных переменных
+   * \return компонент ВМ
+   */
   VM *
-  vm_create (char* entryFuncName, u1 nglobals)
+  vm_create (u1 nglobals)
   {
     VM *vm = (VM*) calloc (1, sizeof (VM));
-    vm_init (vm, entryFuncName, nglobals);
+    vm_init (vm, nglobals);
     return vm;
   }
+  static u4 callsp = -1; ///< указатель контекста
+  static u4 sp = -1; ///< указатель стека
 
   /**
-  Выполняе байт-коды
-  \param[in] vm  экземпляр Vm
-  \param[in] startip с какого байта выполнять опкоды
-  \param[in] trace если трассировка?
-  \param[in] numberFromLocalsAsPar использовать ли число из локальных переменных
-  \return число из локальных переменных
+   *выполнение инструкций
+   * \param vm компонент ВМ
+   * \param funcName имя функции чтобы взять ее байт-код из карты
+   * \param nargs количество аргументов которые принимает функция
+   * \param trace печатать ли трассу?
    */
   void
-  vm_exec (VM *vm, bool trace)
+  vm_exec (VM *vm, char *funcName, u1 nargs, bool trace)
   {
 
+    /*
+    Принимает имя функции и количество аргументов для функции (основное)
+, содает контекст и присваеивает ему байт-код который нашла в карте по имени
+функции(метода), выявляет байты опкода по указателю ip считая с нулевого.Этой
+функцией рекурсионно пользуется опкод INVOKE.
+     */
 
-    u4 ip;
-    u4 sp;
-    u4 callsp;
 
     f4 a = 0;
     f4 b = 0;
 
-    ip = 0;
-    sp = -1;
-    callsp = -1;
+
 
     i2 addr;
     u1 n_locNum;
@@ -160,63 +164,63 @@ extern "C"
 
 
 
-    u4 opcode = vm->code[ip];
-    while (opcode != STOP)
+    u4 ip = 0;
+
+    ++callsp; // создаем контекст
+
+    vm->call_stack[callsp].bytecode = (u1*) mapGet (funcName, vTable); // присваиваем байт-код контексту
+
+    u1* code = vm->call_stack[callsp].bytecode; // переопределим имя байт-кода
+    u1 opcode = code[ip]; // сам опкод
+    if (nargs > 0)// если имеем некоторое количество аргументов
+      {
+        u1 nFirstarg = sp - nargs + 1; // где первый аргумент в програмном стеке?
+
+        for (int i = 0; i < nargs; i++)// создаем фактические аргументы в таблице локальных
+          // переменных со стека, перемещая их из глубины стека
+          {
+            vm->call_stack[callsp].locals[i].floatValue = vm->stack[nFirstarg + i].floatValue;
+
+          }
+        sp -= nargs; // уравниваем стек, так как взяли фактические аргументы
+
+      }
+
+
+    while (opcode != STOP)// основная петля интерпритатора,работает пока не встретит опкод STOP
       {
         if (trace)
           {
-            vm_print_instr (vm->code, ip);
+            vm_print_instr (vm->call_stack[callsp].bytecode, ip); // печатаем инструкции - трассу
 
           }
 
         ip++; // переходим на следующую инструкцию(!) или аргумент(!)
-        switch (opcode)
+        switch (opcode)// выборка
           {
-          case NOOP:
+          case NOOP: ///<нет операций
             break;
-          case FADD:
+          case FADD:///<сложение
             b = vm->stack[sp--].floatValue;
             a = vm->stack[sp--].floatValue;
             vm->stack[++sp].floatValue = a + b;
             break;
-          case FSUB:
+          case FSUB: ///<вычитание
             b = vm->stack[sp--].floatValue;
             a = vm->stack[sp--].floatValue;
             vm->stack[++sp].floatValue = a - b;
             break;
-          case FMUL:
+          case FMUL:///<умножение
             b = vm->stack[sp--].floatValue;
             a = vm->stack[sp--].floatValue;
             vm->stack[++sp].floatValue = a * b;
             break;
-          case FDIV:
+          case FDIV: ///<деление
             b = vm->stack[sp--].floatValue;
             a = vm->stack[sp--].floatValue;
             vm->stack[++sp].floatValue = a / b;
             break;
-            // \todo должна быть поддержка N в компиляторе
-            //        case IADD:
-            //          b = vm->stack[sp--].intValue;
-            //          a = vm->stack[sp--].intValue;
-            //          vm->stack[++sp].floatValue = a + b;
-            //          break;
-            //        case ISUB:
-            //          b = vm->stack[sp--].intValue;
-            //          a = vm->stack[sp--].intValue;
-            //          vm->stack[++sp].intValue = a - b;
-            //          break;
-            //        case IMUL:
-            //          b = vm->stack[sp--].intValue;
-            //          a = vm->stack[sp--].intValue;
-            //          vm->stack[++sp].intValue = a * b;
-            //          break;
-            //        case IDIV:
-            //          b = vm->stack[sp--].intValue;
-            //          a = vm->stack[sp--].intValue;
-            //          vm->stack[++sp].intValue = a / b;
-            //          break;
 
-            // конец должна быть поддержка
           case IREM:// получить остаток от деления
             b = vm->stack[sp--].floatValue;
             a = vm->stack[sp--].floatValue;
@@ -262,58 +266,59 @@ extern "C"
               break;
 
             }
-          case FEQ:
+            // операции сравнения
+          case IEQ:
             {
-              b = vm->stack[sp--].floatValue;
-              a = vm->stack[sp--].floatValue;
-              vm->stack[++sp].floatValue = (a < b) ? true : false;
+              b = vm->stack[sp--].intValue;
+              a = vm->stack[sp--].intValue;
+              vm->stack[++sp].intValue = (a < b) ? true : false;
               break;
             }
-
+            // операции управления потоком
           case BR:
             {
-              ip = geti2 (&vm->code[ip]);
+              ip = geti2 (&code[ip++]);
               break;
             }
           case BRT:
             {
-              addr = geti2 (&vm->code[ip]);
-              if ((u1) vm->stack[sp--].floatValue == true) ip = addr;
+              addr = geti2 (&code[ip++]);
+              if ((u1) vm->stack[sp--].intValue == true) ip = addr;
               break;
             }
           case BRF:
             {
-              addr = geti2 (&vm->code[ip]);
-              if ((u1) vm->stack[sp--].floatValue == false) ip = addr;
+              addr = geti2 (&code[ip++]);
+              if ((u1) vm->stack[sp--].intValue == false) ip = addr;
               break;
-            case FCONST:
+            case FCONST:///<положить константу на стек
 
-              vm->stack[++sp].floatValue = *((float*) &vm->code[ip]);
+              vm->stack[++sp].floatValue = *((float*) &code[ip]);
 
               ip += 3;
               ip++;
               break;
 
-            case LOAD:
-              offset = vm->code[ip++];
-              vm->stack[++sp] = vm->call_stack[callsp].locals[offset];
+            case FLOAD:///<загрузить из таблицы локальных переменных на стек
+              offset = code[ip++];
+              vm->stack[++sp].floatValue = vm->call_stack[callsp].locals[offset].floatValue;
               break;
-            case GLOAD:
-              addr = vm->code[ip++];
-              vm->stack[++sp] = vm->globals[addr];
+            case FGLOAD:///<загрузить из таблицы глобальных переменнных на стек 14
+              addr = code[ip++];
+              vm->stack[++sp].floatValue = vm->globals[addr].floatValue;
               break;
-            case STORE:
-              offset = vm->code[ip++];
-              vm->call_stack[callsp].locals[offset] = vm->stack[sp--];
+            case FSTORE: ///<сохранить со стека в лакальные переменные
+              offset = code[ip++];
+              vm->call_stack[callsp].locals[offset].floatValue = vm->stack[sp--].floatValue;
               break;
-            case GSTORE:
-              addr = vm->code[ip++];
-              vm->globals[addr] = vm->stack[sp--];
+            case FGSTORE: ///<сохранить со стека в глобальные переменные
+              addr = code[ip++];
+              vm->globals[addr].floatValue = vm->stack[sp--].floatValue;
               break;
               // Отпечать R из локальых переменных
             case PRINT:
               {
-                int numberFromLocals = vm->code[ip++];
+                int numberFromLocals = code[ip++];
                 Variable value = vm->call_stack[callsp].locals[numberFromLocals];
                 printf ("print float Value: %f\n", value.floatValue);
 
@@ -323,86 +328,44 @@ extern "C"
             case POP:
               --sp;
               break;
-              //        case 25 ... 25 + 15:
-              //          {
-              //            int argc = (int) vm->stack[sp--];
-              //            float argv[argc];
-              //            for (int i = 0; i < argc; i++)
-              //              {
-              //                argv[i] = vm->stack[sp--];
-              //
-              //              }
-              //            a = call_user (opcode - 25, argc, argv);
-              //            if (argc != 0)
-              //              {
-              //                vm->registrThatRetFunc = a;
-              //
-              //              }
 
-
-
-              break;
-
-            case INVOKE:
+            case INVOKE:// динамическое связываеие по имени функции
               {
-                u1 strArgLen = *((u1*) (&vm->code[ip]));
-                printf ("strArg len:%d\n", strArgLen);
-                u1* strArgName = (u1*) malloc (strArgLen);
+                u1 funcArgLen = *((u1*) (&code[ip])); // длина имени функции
+                char *funcName = (char*) malloc (funcArgLen); // определяем имя функции
+                strcpy (funcName, (char*) &code[ip + 1]);
+
+                u1 nargs = code[ip + funcArgLen + 1 ]; // количество аргументов - N
+
+                vm_exec (vm, funcName, nargs, true); // рекурсивный вызов - связывание
+
+                ip += (funcArgLen + 1); // функция отработала - продолжаем выполнение предыдущей функции
+                printf ("in invoke ip : %d\n", ip);
                 ip++;
-                for (int i = 0; i < strArgLen; i++)
-                  {
-                    strArgName[i] = vm->code[ip + i];
-
-                  }
-                printf ("%s\n", strArgName);
-                if (strcmp ((char*) strArgName, "TestClass_medthot") == 0)
-                  {
-                    printf ("yes\n");
-
-                  }
-                printf ("strArgName len: %d Testclass_methot len: %d\n", strlen ((char*) strArgName), strlen ((char*) "TestClass_medthot"));
-
-                ip += strArgLen;
                 break;
+
+
               }
 
-            case CALL:
+            case RET: ///<завершает функцию
               {
+                callsp--; // уменьшаем указатель контекстов на прошлый контекст
+                return; // устанавливаем рекурсию
 
-                addr = geti2 (&vm->code[ip++]);
-                u1 nargs = vm->code[ip++];
-                u1 nFirstarg = sp - nargs + 1;
-                ++callsp;
-
-                vm_context_init (&vm->call_stack[callsp], ip, 26);
-
-                for (int i = 0; i < nargs; i++)
-                  {
-                    vm->call_stack[callsp].locals[i] = vm->stack[nFirstarg + i];
-                  }
-                sp -= nargs;
-                ip = addr;
-                break;
               }
-            case RET:
+            case STORE_RESULT:///<сохранить результат функции специальный регистр
               {
-                ip = vm->call_stack[callsp].returnip;
-                callsp--;
-                break;
-              }
-            case STORE_RESULT:
-              {
-                n_locNum = vm->code[ip++];
+                n_locNum = code[ip++];
                 vm->registrThatRetFunc = vm->call_stack[callsp].locals[n_locNum];
                 break;
               }
-            case LOAD_RESULT:
+            case LOAD_RESULT:///<загрузить результат прошлой функции из специального регистра на стек
               {
                 vm->stack[++sp] = vm->registrThatRetFunc;
                 break;
               }
 
-
+              // Ошибка разбора байт-кода
             default:
               {
                 printf ("invalid opcode: %d at ip=%d\n", opcode, (ip - 1));
@@ -418,31 +381,27 @@ extern "C"
 
           }
 
-        if (trace) vm_print_stack (vm->stack, 3);
-        opcode = vm->code[ip];
+        if (trace) vm_print_stack (vm->stack, 3); // печатаем стек
+        printf ("top of stack: %f\n", vm->stack[sp].floatValue); // печатаем вершину стека
+        opcode = code[ip]; // следующий опкод
 
 
       }
     if (trace)
       {
-        vm_print_data (vm->globals, vm->nglobals);
+        vm_print_data (vm->globals, vm->nglobals); // печаем глобалные переменные
       }
     printf ("Heap:\n");
-    dumpHeap ();
+    dumpHeap (); // печатаем кучу
   }
 
-  static void
-  vm_context_init (Context *ctx, u4 ip, u1 nlocals)
-  {
-    if (nlocals > DEFAULT_NUM_LOCALS)
-      {
-        fprintf (stderr, "too many locals requested: %d\n", nlocals);
-      }
-    ctx->returnip = ip;
-  }
-
+    /**
+   * печатаем инструкцию
+   * \param code данный байт-код
+   * \param ip указатель инструкции
+   */
   void
-  vm_print_instr (unsigned char *code, u4 ip)
+  vm_print_instr (u1 *code, u4 ip)
   {
 
     u4 opcode = code[ip];
@@ -456,7 +415,7 @@ extern "C"
         if (opcode == FCONST)
           {
 
-            printf ("%04d: %-10s %f", ip, "iconst", *((float*) &(code[ip + 1])));
+            printf ("%04d: %-10s %f", ip, "fconst", *((float*) &(code[ip + 1])));
           }
         else
           {
@@ -475,6 +434,11 @@ extern "C"
       }
   }
 
+  /**
+   * печатаем стек
+   * \param stack стек программы
+   * \param count количество элементов для отпечатки
+   */
   void
   vm_print_stack (Variable *stack, u1 count)
   {
@@ -492,6 +456,10 @@ extern "C"
 
   }
 
+  /** печатаем глобальные переменные
+\param globals массив глобальных переменных
+\param count сколько печатать элементов
+   */
   void
   vm_print_data (Variable *globals, u1 count)
   {
@@ -502,17 +470,7 @@ extern "C"
         printf ("%04d: %f\n", i, globals[i]);
       }
   }
-
-  void
-  vm_print_locals (float *locals, int count)
-  {
-    printf ("Locals memory:\n");
-    for (int i = 0; i < count; i++)
-      {
-
-        printf ("%04d: %f\n", i, locals[i]);
-      }
-  }
+  // ПРОГРАММА
 
   int
   main ()
@@ -543,20 +501,19 @@ extern "C"
         fputs ("Ошибка чтения", stderr);
         exit (3);
       }
-
-
     // завершение работы
     fclose (ptrFile);
 
-
-    if (!parseByteCodeToMap (opcodeCharBuffer))
+    // разобрать байт-код в карту
+    if (!parseByteCodeForMap (opcodeCharBuffer))
       {
         fputs ("Не разобрал файл в виртуальную таблицу", stderr);
       }
 
-
-    VM *vm = vm_create ("main", 0);
-    vm_exec (vm, true);
+    // создаем ВМ
+    VM *vm = vm_create (0);
+    vm_exec (vm, "main", 0, true); // выполняем с функции main
+    // освобождаем память и буферы
     vm_free (vm);
     free (opcodeCharBuffer);
     mapClose (vTable);

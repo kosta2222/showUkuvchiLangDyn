@@ -187,15 +187,20 @@ class LispMach:
         int_ordLocToStore=ord(var)-ord("a") # определим индекс буквы
         self.me_gen_byteCode_SIrV(int_ordLocToStore)
     elif mas_I_Or_Str[0] == 'setResult!':  # сохранить с вершины стека в регистр 
-        self.me_gen_byteCode_SIrV(STORE_RESULT)         
+        (_,var)=mas_I_Or_Str
+        self.me_gen_byteCode_SIrV(STORE_RESULT) 
+        int_ordLocToStore=ord(var)-ord("a") # определим индекс буквы
+        self.me_gen_byteCode_SIrV(int_ordLocToStore)        
     elif mas_I_Or_Str[0] == 'defun': #определить функцию 
         self.nCountMethods+=1
         (_,str_nameFunc, list_arg,body_expr) = mas_I_Or_Str
-        argStrLen=len(str_nameFunc)
+        argStrLen=len(str_nameFunc) + 1 # + 1 для 0-завершителя строки
         self.me_gen_byteCode_SIrV(argStrLen)
         byteArrStr=bytearray(str_nameFunc,'cp1251')
         for i in byteArrStr:
             self.me_gen_byteCode_SIrV(i)
+            
+        self.me_gen_byteCode_SIrV(0) # 0 - завершитель строки
         
         self.me_gen_byteCode_SIrV(0)
         self.me_gen_byteCode_SIrV(0)
@@ -313,14 +318,19 @@ class LispMach:
         self.me_recurs_evalPerList_SMrV(funcid)
         self.me_gen_byteCode_SIrV(INVOKE_BY_ORDINAL)
     elif  mas_I_Or_Str[0]=='invoke':
-        (_,func_name)=mas_I_Or_Str       
+        print('invoke')
+        (_,func_name,list_args)=mas_I_Or_Str  
+        self.me_recurs_evalPerList_SMrV(list_args)
         self.me_gen_byteCode_SIrV(INVOKE)
-        argStrLen=len(func_name)
+        argStrLen=len(func_name) + 1 # + 1 для 0 - завершителя строки
         self.me_gen_byteCode_SIrV(argStrLen)
         byteArrStr=bytearray(func_name,'cp1251')
          
         for i in byteArrStr:
-            self.me_gen_byteCode_SIrV(i)                  
+            self.me_gen_byteCode_SIrV(i)
+            
+        self.me_gen_byteCode_SIrV(0) # 0 - завершитель строки    
+        self.me_gen_byteCode_SIrV(self.fi_int_nargs)    
         
     elif mas_I_Or_Str[0]=='create_string': # создаем строку 
         (_,argStr)= mas_I_Or_Str
