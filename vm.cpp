@@ -14,41 +14,6 @@ extern "C"
   extern Variable* m_objectMap[]; ///< куча
   extern struct map * vTable; ///< карта методов
 
-  /** вызвать пользовательскую функцию
-   \param [in] argc количество аргументов
-   \param [in] массив целых аргументов
-   \return значение
-   */
-  //Variable
-  //call_user (int funcid, int argc, float *argv)
-  //{
-  //  Variable ret;
-  //  int i;
-  //
-  //  if (funcid == 0)
-  //    {
-  //      printf ("Called user function 0 => stop.\n");
-  //      return ret;
-  //    }
-  //  if (funcid == 1)
-  //    {
-  //      ret = cos (argv[-1]);
-  //    }
-  //  if (funcid == 2)
-  //    {
-  //      ret = sin (argv[-1]);
-  //    }
-  //  printf ("Called user function %d with %d args:", funcid, argc);
-  //  for (i = 0; i < argc; i++)
-  //    {
-  //      printf (" %f", argv[i]);
-  //
-  //    }
-  //  printf ("\n");
-  //  return ret;
-  //
-  //}
-
   /**
   Отпечатка инструкции
    */
@@ -111,7 +76,10 @@ extern "C"
     vm->nglobals = nglobals;
   }
 
-  /** освободить память из под виртуальной машины */
+  /**
+     * освободить память из под виртуальной машины
+     * \param vm компонент ВМ
+     */
   void
   vm_free (VM *vm)
   {

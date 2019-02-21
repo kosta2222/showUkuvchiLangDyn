@@ -54,20 +54,23 @@ f4 getf4(char *p);
 
 
 /** Основные структуры и структура для одного элемента стека */
+/**
+// специальный компонент для инфо объекта
+ */
 typedef struct {
-    LONG_PTR heapPtr;
-    int type;
+    LONG_PTR heapPtr;///< указатель на физическое положение в куче
+  int type;///< тип обьекта число N
 } Object;
 
 /** Cтруктура для одного элемента стека
   элементы union разделяют один и тоже адрес ram */
 typedef union {
-    u1 charValue;
-    u2 shortValue;
-    f4 floatValue;
-    u4 intValue;
-    LONG_PTR ptrValue;
-    Object object;
+  u1 charValue;///< для символа
+  u2 shortValue;///< для короткого
+  f4 floatValue;///< R число
+  u4 intValue;///< N число
+  LONG_PTR ptrValue;///< указатель на физическое положение в куче
+  Object object;///< специальный компонент для инфо объекта
 } Variable;
 #ifdef __cplusplus
 }
